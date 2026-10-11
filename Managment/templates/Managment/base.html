@@ -1,0 +1,53 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Task Manager{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'Managment/css/style.css' %}">
+</head>
+
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <a class="brand" href="{% url 'task_list' %}">Task Manager</a>
+            <div class="topbar-actions">
+                {% if user.is_authenticated %}
+                <span class="user-chip">
+                    {{ user.username }}
+                    <span class="role-badge">{{ user.get_role_display }}</span>
+                </span>
+
+                {% if switch_users %}
+                <form class="inline" method="post" action="{% url 'switch_user' %}">
+                    {% csrf_token %}
+                    <select name="user_id" class="switcher" onchange="this.form.submit()">
+                        {% for u in switch_users %}
+                        <option value="{{ u.pk }}" {% if u.pk == user.pk %}selected{% endif %}>
+                            {{ u.username }} ({{ u.get_role_display }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </form>
+                {% endif %}
+
+                <form class="inline" method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit">Logout</button>
+                </form>
+                {% else %}
+                <a class="link" href="{% url 'login' %}">Login</a>
+                <a class="link" href="{% url 'register' %}">Register</a>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+
+</html>

@@ -1,0 +1,26 @@
+{% extends "Managment/auth_base.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<form method="post" class="auth-form">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div class="auth-errors">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="field">
+        <span class="icon-box icon-user"></span>
+        <input type="text" name="username" placeholder="Username" value="{{ form.username.value|default:'' }}"
+            autocomplete="username" autofocus required>
+    </div>
+
+    <div class="field">
+        <span class="icon-box icon-lock"></span>
+        <input type="password" name="password" placeholder="Password" autocomplete="current-password" required>
+    </div>
+
+    <button type="submit" class="auth-btn">Login</button>
+</form>
+
+<p class="auth-link">No account yet? <a href="{% url 'register' %}">Register</a></p>
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "Managment/base.html" %}
+{% block title %}Tasks{% endblock %}
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Tasks</h1>
+        <p class="summary">{{ rows|length }} task{{ rows|length|pluralize }} visible to you</p>
+    </div>
+    <a class="btn btn-primary" href="{% url 'task_create' %}">+ New task</a>
+</div>
+
+{% for row in rows %}
+<div class="card status-{{ row.task.status }}">
+    <div class="card-head">
+        <div>
+            <h3>{{ row.task.title }}</h3>
+            <p class="meta">
+                By {{ row.task.created_by.username }}
+                {% if row.task.department %}· {{ row.task.department }}{% endif %}
+                · {{ row.task.created_at|date:"Y-m-d H:i" }}
+            </p>
+        </div>
+        <span class="status {{ row.task.status }}">{{ row.task.get_status_display }}</span>
+    </div>
+
+    {% if row.task.description %}<p>{{ row.task.description }}</p>{% endif %}
+
+    {% if row.can_edit or row.can_approve or row.can_reject or row.can_delete %}
+    <div class="card-actions">
+        {% if row.can_edit %}
+        <a class="btn" href="{% url 'task_edit' row.task.pk %}">Edit</a>
+        {% endif %}
+
+        {% if row.can_approve %}
+        <form class="inline" method="post" action="{% url 'task_approve' row.task.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-success">
+                {% if row.task.status == 'PENDING' %}Approve{% else %}Final approve{% endif %}
+            </button>
+        </form>
+        {% endif %}
+
+        {% if row.can_reject %}
+        <form class="inline" method="post" action="{% url 'task_reject' row.task.pk %}">
+            {% csrf_token %}<button type="submit" class="btn-danger">Reject</button>
+        </form>
+        {% endif %}
+
+        {% if row.can_delete %}
+        <form class="inline" method="post" action="{% url 'task_delete' row.task.pk %}"
+            onsubmit="return confirm('Delete this task?');">
+            {% csrf_token %}<button type="submit" class="btn-danger">Delete</button>
+        </form>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% empty %}
+<div class="empty">No tasks yet. Create your first one with “+ New task”.</div>
+{% endfor %}
+{% endblock %}

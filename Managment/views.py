@@ -1,0 +1,115 @@
+from django.contrib.auth import login
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, render, redirect
+from django.core.exceptions import PermissionDenied
+from django.views.decorators.http import require_POST
+
+from .forms import RegisterForm, TaskForm
+from .models import Task, User
+from .permissions import PermissionChecker
+
+INITIAL_STATUS = {
+    User.Role.EMPLOYEE: Task.Status.PENDING,
+    User.Role.MANAGER: Task.Status.MANAGER_APPROVED,
+    User.Role.CEO: Task.Status.APPROVED,
+}
+
+
+def register(request):
+    form = RegisterForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        user = form.save()
+        login(request, user)
+        return redirect("task_list")
+    return render(request, "Managment/register.html", {"form": form})
+
+
+@login_required
+def task_list(request):
+    checker = PermissionChecker(request.user)
+    tasks = checker.visible_tasks().select_related("created_by", "department")
+    rows = [
+        {
+            "task": task,
+            "can_edit": checker.can_edit(task),
+            "can_approve": checker.can_approve(task),
+            "can_reject": checker.can_reject(task),
+            "can_delete": checker.can_delete(task),
+        }
+        for task in tasks
+    ]
+    return render(request, "Managment/task_list.html", {"rows": rows})
+
+
+@login_required
+def task_create(request):
+    form = TaskForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        task = form.save    (commit=False)
+        task.created_by = request.user
+        task.department = request.user.department
+        task.status = INITIAL_STATUS[request.user.role]
+        task.save()
+        return redirect("task_list")
+    return render(request, "Managment/task_form.html", {"form": form, "titel": "New task"})
+
+
+@login_required
+def task_edit(request, pk):
+    checker = PermissionChecker(request.user)
+    task = get_object_or_404(checker.visible_tasks(), pk=pk)
+    if not checker.can_edit(task):
+        raise PermissionDenied
+    form = TaskForm(request.POST or None, instance=task)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        return redirect("task_list")
+    return render(request, "Managment/task_form.html", {"form": form, "title": "Edit task"})
+
+
+@login_required
+@require_POST
+def task_delete(request, pk):
+    checker = PermissionChecker(request.user)
+    task = get_object_or_404(checker.visible_tasks(), pk=pk)
+    if not checker.can_delete(task):
+        raise PermissionDenied
+    task.delete()
+    return redirect("task_list")
+
+
+def change_status(request, pk, new_status):
+    checker = PermissionChecker(request.user)
+    task = get_object_or_404(checker.visible_tasks(), pk=pk)
+    if not checker.can_approve(task):
+        raise PermissionDenied
+    task.status = new_status
+    task.save(update_fields=["status", "updated_at"])
+    return redirect("task_list")
+
+
+@login_required
+@require_POST
+def task_approve(request, pk):
+    checker = PermissionChecker(request.user)
+    task = get_object_or_404(checker.visible_tasks(), pk=pk)
+    if not checker.can_approve(task):
+        raise PermissionDenied
+    if request.user.role == User.Role.CEO:
+        task.status = Task.Status.APPROVED
+    else:
+        task.status = Task.Status.MANAGER_APPROVED
+    task.save(update_fields=["status", "updated_at"])
+    return redirect("task_list")
+
+
+@login_required
+@require_POST
+def task_reject(request, pk):
+    checker = PermissionChecker(request.user)
+    task = get_object_or_404(checker.visible_tasks(), pk=pk)
+    if not checker.can_reject(task):
+        raise PermissionDenied
+    task.status = Task.Status.REJECTED
+    task.save(update_fields=["status", "updated_at"])
+    return redirect("task_list")
