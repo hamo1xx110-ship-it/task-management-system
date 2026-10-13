@@ -16,6 +16,12 @@
     {{ form.username.errors }}
 
     <div class="field">
+        <span class="icon-box icon-mail"></span>
+        <input type="email" name="email" placeholder="Email" value="{{ form.email.value|default:'' }}"
+            autocomplete="email" required>
+    </div>
+    {{ form.email.errors }}
+    <div class="field">
         <span class="icon-box icon-dept"></span>
         {{ form.department }}
     </div>

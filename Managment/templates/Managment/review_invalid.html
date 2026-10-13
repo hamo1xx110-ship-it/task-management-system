@@ -1,0 +1,9 @@
+{% extends "Managment/base.html" %}
+{% block title %}Link problem{% endblock %}
+{% block content %}
+<div class="form-card">
+    <h2>Can't open this link</h2>
+    <p>{{ reason }}</p>
+    <a class="btn btn-primary" href="{% url 'task_list' %}">Go to tasks</a>
+</div>
+{% endblock %}
