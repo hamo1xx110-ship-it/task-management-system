@@ -1,5 +1,8 @@
 from django.test import TestCase
+from django.core import mail
+from django.urls import reverse
 
+from .notifications import make_token
 from .models import Department, Task, User
 from .permissions import PermissionChecker
 
@@ -82,3 +85,97 @@ class PermissionTests(TestCase):
         self.task.status = Task.Status.MANAGER_APPROVED
         self.task.save()
         self.assertTrue(checker.can_approve(self.task))
+class EmailApprovalTests(TestCase):
+    def setUp(self):
+        self.dev = Department.objects.create(name="Development")
+        self.ceo = User.objects.create_user(
+            "ceo", password="pass12345",
+            email="ceo@example.com", role=User.Role.CEO,
+        )
+        self.manager = User.objects.create_user(
+            "manager", password="pass12345", email="manager@example.com",
+            role=User.Role.MANAGER, department=self.dev,
+        )
+        self.employee = User.objects.create_user(
+            "employee", password="pass12345", email="employee@example.com",
+            role=User.Role.EMPLOYEE, department=self.dev,
+        )
+        self.task = Task.objects.create(
+            title="Fix bug", created_by=self.employee, department=self.dev
+        )
+
+    def _url(self, task, approver, action):
+        return reverse("act_by_email", args=[make_token(task, approver, action)])
+
+    def test_creating_task_emails_the_manager(self):
+        self.client.force_login(self.employee)
+        self.client.post(
+            reverse("task_create"), {"title": "New task", "description": "x"}
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["manager@example.com"])
+
+    def test_manager_link_moves_task_to_ceo_and_emails_ceo(self):
+        self.client.force_login(self.manager)
+        response = self.client.get(self._url(self.task, self.manager, "approve"))
+        self.assertEqual(response.status_code, 302)
+
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, Task.Status.MANAGER_APPROVED)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["ceo@example.com"])
+
+    def test_ceo_link_gives_final_approval(self):
+        self.task.status = Task.Status.MANAGER_APPROVED
+        self.task.save()
+        self.client.force_login(self.ceo)
+        self.client.get(self._url(self.task, self.ceo, "approve"))
+
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, Task.Status.APPROVED)
+
+    def test_reject_link_rejects_task(self):
+        self.client.force_login(self.manager)
+        self.client.get(self._url(self.task, self.manager, "reject"))
+
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, Task.Status.REJECTED)
+
+    def test_link_opened_by_wrong_user_is_forbidden(self):
+        url = self._url(self.task, self.manager, "approve")
+        self.client.force_login(self.ceo)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 403)
+
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, Task.Status.PENDING)
+
+    def test_link_cannot_be_reused(self):
+        url = self._url(self.task, self.manager, "approve")
+        self.client.force_login(self.manager)
+        self.client.get(url)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 400)
+
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, Task.Status.MANAGER_APPROVED)
+
+    def test_tampered_link_is_rejected(self):
+        url = self._url(self.task, self.manager, "approve") 
+        parts = url.rstrip("/").split("/")
+        token = parts[-1]
+        tampered_token = ("x" if token[0] != "x" else "y") + token[1:]
+        parts[-1] = tampered_token
+        url = "/".join(parts) + "/"
+
+        self.client.force_login(self.manager)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 400)
+
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, Task.Status.PENDING)
+
+    def test_anonymous_user_is_redirected_to_login(self):
+        response = self.client.get(self._url(self.task, self.manager, "approve"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response.url)
